@@ -20,6 +20,6 @@ USER node
 ENTRYPOINT ["node", "/app/dist/cli.js"]
 CMD ["mcp"]
 LABEL org.opencontainers.image.source="https://github.com/CloudCorpRecords/lockdrift" \
-      org.opencontainers.image.description="lockdrift: Lockfile drift auditor: compares package.json dependency ranges against package-lock.json, reporting deps missing from the lock, locked versions outside their declared range, extraneous locked packages, and lockfile version problems across a repo or monorepo." \
+      org.opencontainers.image.description="lockdrift: lockfile-vs-manifest drift — declared dependencies missing from package-lock.json, ranges that disagree, and locked packages no longer declared. One bin serves the CLI and a stdio MCP server." \
       org.opencontainers.image.licenses="MIT" \
       io.modelcontextprotocol.server.name="io.github.CloudCorpRecords/lockdrift"

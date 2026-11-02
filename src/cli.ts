@@ -2,52 +2,40 @@
 /**
  * lockdrift CLI.
  *
- *   lockdrift check [target] [--json]
+ *   lockdrift check <package.json> <package-lock.json>
  *   lockdrift mcp
- *   lockdrift --version
  *
- * Exit codes: 0 when the verdict is IN-SYNC, 1 for any other verdict,
- * 2 usage error, 141 when the reader closed the output pipe early
- * (the shell-visible equivalent of death by SIGPIPE). The emit contract
- * follows FACTORY-NOTES.md: one flush-aware write, exitCode never
- * process.exit on report paths.
+ * Both arguments are file paths; the documents are read and
+ * compared locally. Pure local computation: no network, no
+ * configuration. Argument validation happens before any file
+ * is read. Exit codes: 0 success, 1 runtime error (including an
+ * unreadable or invalid file), 2 usage error.
  */
-import { runCheck, renderReport, CLEAN_VERDICT, VERSION } from "./core.js";
-
-function exitBrokenPipe(): never {
-  process.exit(141);
-}
-
-process.stdout.on("error", (err: NodeJS.ErrnoException) => {
-  if (err.code === "EPIPE") exitBrokenPipe();
-  throw err;
-});
-
-async function emit(text: string, code: number): Promise<void> {
-  process.exitCode = code;
-  await new Promise<void>((resolve, reject) => {
-    process.stdout.write(`${text}\n`, (err) => {
-      if (!err) {
-        resolve();
-        return;
-      }
-      if ((err as NodeJS.ErrnoException).code === "EPIPE") exitBrokenPipe();
-      reject(err);
-    });
-  });
-}
+import { readFileSync } from "node:fs";
+import { checkLockfileDrift, formatPayload, VERSION } from "./lockdrift.js";
 
 function usage(): never {
   console.error(`Usage:
-  lockdrift check [target] [--json]
+  lockdrift check <package.json> <package-lock.json>
   lockdrift mcp
   lockdrift --version`);
   process.exit(2);
 }
 
+function readFile(path: string, label: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (err) {
+    console.error(
+      `error: cannot read ${label} file '${path}': ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
-  if (cmd === "--version" || cmd === "-v" || cmd === "version") {
+  if (cmd === "--version" || cmd === "-v") {
     console.log(VERSION);
     return;
   }
@@ -55,15 +43,16 @@ async function main(): Promise<void> {
     await import("./mcp.js");
     return;
   }
-  if (cmd !== "check") usage();
-  const target = rest.find((a) => !a.startsWith("--")) ?? ".";
+  if (cmd !== "check" || rest.length !== 2) usage();
+
+  const packageJson = readFile(rest[0], "package.json");
+  const lockfileJson = readFile(rest[1], "package-lock.json");
   try {
-    const report = runCheck(target);
-    const text = rest.includes("--json") ? JSON.stringify(report, null, 2) : renderReport(report);
-    await emit(text, report.verdict === CLEAN_VERDICT ? 0 : 1);
+    const out = checkLockfileDrift(packageJson, lockfileJson);
+    console.log(formatPayload(out));
   } catch (err) {
     console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
-    process.exitCode = 2;
+    process.exit(1);
   }
 }
 
